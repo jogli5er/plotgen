@@ -35,6 +35,7 @@ import sys
 import pickle
 import copy
 import textwrap
+import re
 import shutil
 import xopen
 import seaborn

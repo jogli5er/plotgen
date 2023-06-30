@@ -1,0 +1,29 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Plotgen file",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "cwd": "~/OneDrive/Research/results/full_analysis_v2/full_analysis_v2/tanvir",
+            "args": [
+                "-i",
+                "./sizes_champsim64k/**/cpu0_L1I_num_cl_with_block_size.tsv",
+                "-i",
+                "./sizes_champsim32k/**/cpu0_L1I_num_cl_with_block_size.tsv",
+                "-i",
+                "./sizes_champsim_vcl_buffer_*/**/cpu0_L1I_buffer_num_cl_with_block_size.tsv",
+                "--no-columns",
+                "--select-frames",
+                "*wordpress",
+                "--print",
+                "--join",
+                "index",
+                "--print"
+            ]
+        }
+    ]
+}
