@@ -1576,6 +1576,7 @@ for input in args.input:
 
     for optionIdx, (optionName, optionValue) in enumerate(input['args'].ordered_args):
         if optionConsumed[optionIdx]:
+            print(f"DEBUG: {optionName} already consumed", file=sys.stderr)
             continue
         optionConsumed[optionIdx] = True
         multiFrameActions = ['print_precision', 'select_mode', 'normalise_function', 'sort_function', 'sort_order', 'add_at', 'add_function', 'apply_mode', 'apply_function', 'group_function', 'join', 'file', 'pickle', 'split_column', 'split_icolumn', 'split_row', 'split_irow', 'focus_iframes', 'defocus_iframes', 'focus_frames', 'defocus_frames', 'select_iframes', 'select_frames', 'ignore_iframes', 'ignore_frames', 'frame_names']
