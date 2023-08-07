@@ -487,8 +487,20 @@ class DataframeActions:
 
     def renameColumns(dataframe, columnIds, names):
       names = list(map(__class__.transformers['index'], names))
+      name_mapping = {}
+      for name in names:
+        splits = name.split(':')
+        if len(splits) > 1:
+            name_mapping[splits[0]] = splits[1]
       lColumns = dataframe.columns.tolist()
       nColumns = dataframe.columns.name
+      if len(name_mapping) > 0:
+        for idx,key in enumerate(lColumns):
+            if not name_mapping.get(key):
+                continue
+            lColumns[idx] = name_mapping.get(key)
+        dataframe.columns = lColumns
+        return dataframe
       for i, columnId in enumerate(columnIds):
         if i >= len(names) or i >= len(dataframe.columns):
           break
