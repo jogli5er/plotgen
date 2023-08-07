@@ -1883,7 +1883,7 @@ for input in args.input:
                     elif input['args'].ordered_args[optionIdx+1][0] == "renameregex":
                         optionConsumed[optionIdx+1] = True
                         regexnames = []
-                        for n in frame.columns:
+                        for n in frame.rows:
                             m = re.match(input['args'].ordered_args[optionIdx+1][1][0].encode('utf-8').decode('unicode_escape'), n)
                             if not m:
                                 print(f"WARNING: REGEX DID NOT MATCHL: {input['args'].ordered_args[optionIdx+1][1][0].encode('utf-8').decode('unicode_escape')} for string {n}")
