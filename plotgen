@@ -1019,7 +1019,7 @@ parserFileOptions.add_argument("--apply-rows", help="apply function on or betwee
 
 parserFileOptions.add_argument("--column-names", help="rename columns, start from the first column (e.g. --column-names first second third)", type=str, sticky_default=True, default=[], nargs='*', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--icolumn-names", help="rename specific columns selected by index or slice (e.g. --icolumn names 3: third fourth fifth)", type=str, sticky_default=True, default=[], nargs='*', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--row-names", help="rename rows, start from the first (e.g. --row-names first second third)", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--row-names", help="rename rows, start from the first (e.g. --row-names first second third)", type=str, sticky_default=True, default=[], nargs='*', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--irow-names", help="rename specific rows selected by index or slice (e.g. --irow-names 3::2 third fifth seventh)", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--frame-names", help="rename frames, start from the first (e.g. --frame-names first second third)", type=str, sticky_default=True, default=[], nargs='*', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--iframe-names", help="rename specific frames selected by index or slice (--iframe-names -1 last)", type=str, sticky_default=True, default=[], nargs='*', action=ChildAction, parent=inputFileArgument)
