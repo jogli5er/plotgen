@@ -525,7 +525,7 @@ class DataframeActions:
             sortKey = dataframe.reset_index(drop=True).T.reset_index(drop=True).T
             sortKey = sortKey.sort_values(by=sortKey.index.tolist(), axis=1, ascending=(order == 'asc')).T
         elif functionName == 'name':
-            return df.sort_index(axis=1)
+            return dataframe.sort_index(axis=1)
         else:
             sortKey = getattr(dataframe, functionName)(axis=0).reset_index(drop=True).sort_values(ascending=(order == 'asc'))
         return dataframe.iloc[:, sortKey.index]
