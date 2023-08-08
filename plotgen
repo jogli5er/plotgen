@@ -44,6 +44,7 @@ import scipy.cluster.hierarchy
 import scipy.spatial.distance
 import sklearn.cluster
 import multiprocessing
+from statistics import geometric_mean
 
 # import warnings
 # warnings.filterwarnings('error')
@@ -334,7 +335,7 @@ class DataframeActions:
       'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend', 'ljust', 'rjust', 'cjust', 'kmeans'],
       'amidComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq', 'min', 'max'],
       'onlyAmidComputeFunctions' : ['concat', 'copy', 'kmeans_labels'],
-      'soloComputeFunctions': ['sum', 'mean', 'median', 'std', 'var', 'count', 'skew', 'mad', 'min', 'max'],
+      'soloComputeFunctions': ['sum', 'mean', 'geometric_mean', 'median', 'std', 'var', 'count', 'skew', 'mad', 'min', 'max'],
       'specialGroupFunctions' : ['kmeans'],
       'nonComputeFunctions': ['set', 'cset', 'append', 'prepend', 'ljust', 'rjust', 'cjust', 'concat', 'copy', 'kmeans_labels'] + list(transformers.keys())
     }
