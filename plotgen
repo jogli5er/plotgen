@@ -524,6 +524,8 @@ class DataframeActions:
         if functionName == 'none':
             sortKey = dataframe.reset_index(drop=True).T.reset_index(drop=True).T
             sortKey = sortKey.sort_values(by=sortKey.index.tolist(), axis=1, ascending=(order == 'asc')).T
+        elif functionName == 'name':
+            return df.sort_index(axis=1)
         else:
             sortKey = getattr(dataframe, functionName)(axis=0).reset_index(drop=True).sort_values(ascending=(order == 'asc'))
         return dataframe.iloc[:, sortKey.index]
@@ -969,7 +971,7 @@ parserFileOptions.add_argument("--filter-icolumns", help=f'filter rows by the co
 parserFileOptions.add_argument("--filter-column", help=f'filter rows by the content of the column name (e.g. --filter-column time > 10), available conditions: {{{",".join(DataframeActions.conditions)}}}', type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--sort-order", help="sets sort order for sort operations (default %(default)s)", default='asc', choices=['asc', 'desc'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-function", help="use a sort function when sorting across multiple rows or columns (default 'none'), none will sort the rows or columns in given order", default=['none'], nargs='+', choices=['none'] + DataframeActions.functions['soloComputeFunctions'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-function", help="use a sort function when sorting across multiple rows or columns (default 'none'), none will sort the rows or columns in given order", default=['none'], nargs='+', choices=['none', 'index'] + DataframeActions.functions['soloComputeFunctions'], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--sort-rows", help="sort all rows", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--sort-columns", help="sort all columns", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--sort-by-irows", help="sort column after rows by indexes (or slices)", type=SliceType({'columns': 'columns', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
