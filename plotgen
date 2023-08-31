@@ -1902,6 +1902,8 @@ for input in args.input:
                             m = re.match(input['args'].ordered_args[optionIdx+1][1][0].encode('utf-8').decode('unicode_escape'), n)
                             if not m:
                                 print(f"WARNING: REGEX DID NOT MATCHL: {input['args'].ordered_args[optionIdx+1][1][0].encode('utf-8').decode('unicode_escape')} for string {n}")
+                                regexnames.append(n)
+                                continue
                             regexnames.append(' - '.join(list(m.groups())))
                         frame = DataframeActions.renameRows(frame, list(range(frame.shape[0])), regexnames)
                     else:
