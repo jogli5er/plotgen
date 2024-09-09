@@ -10,7 +10,7 @@ setup(
    long_description=open(os.path.join(os.path.dirname(__file__), 'README.md')).read(),
    long_description_content_type='text/markdown',
    author='Björn Gottschall',
-   author_email='info@bgottschall.de',
+   author_email='info@gottschall.no',
    url='https://github.com/bgottschall/plotgen',
    license='MIT',
    license_files=['LICENSE'],
@@ -20,16 +20,6 @@ setup(
         'Operating System :: OS Independent'
         ],
    keywords='tables graph plot parser plotly',
-   python_requires='>=3.7',
-   install_requires=[
-       'scikit-learn>=1.2.1',
-       'scipy>=1.8.1',
-       'argcomplete>=1.12.3', 
-       'plotly>=5.14.1', 
-       'numpy>=1.21.1', 
-       'pandas>=1.4.0', 
-       'xopen>=1.7.0', 
-       'kaleido>=0.2.1', 
-       'seaborn>=0.11.1'
-       ],
-)   
+   python_requires='>=3.9',
+   install_requires=open(os.path.join(os.path.dirname(__file__), 'requirements.txt')).readlines(),
+)

@@ -45,6 +45,7 @@ import scipy.spatial.distance
 import sklearn.cluster
 import multiprocessing
 from statistics import geometric_mean
+from multiprocessing import cpu_count
 
 # import warnings
 # warnings.filterwarnings('error')
@@ -52,31 +53,40 @@ from statistics import geometric_mean
 # FUTURE: pyarrow
 # import csv.Sniffer
 
+# TODO: replace iloc[...] = with isetitem(...)
+
 __prog__ = 'plotgen'
-__version__ = '0.7.19'
+__version__ = '0.8.18'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
 # All options that are forwared to the plotting script will be filtered through here
 def escapedStr(val: str):
-    return val.translate(str.maketrans({
-        "'": r"\'",
-        "\\": r"\\",
-        "\"": r"\"",
-    }))
+  return val.translate(str.maketrans({
+      "'": r"\'",
+      "\\": r"\\",
+      "\"": r"\"",
+  }))
 
+def getStringNotIn(val):
+  import random, string
+  randString = 'RANDOMSTRING'
+  while randString in val:
+    randString = random.choice(string.ascii_lowercase + string.numbers, K=12)
+  return randString
 
 def isFloat(val):
     if isinstance(val, dict):
         return all(isFloat(x) for x in val.values())
     if isinstance(val, list):
         return all(isFloat(x) for x in val)
-    if val is None:
+    # Explicitly do not allow digit grouping using '_'
+    if val is None or (isinstance(val, str) and '_' in val):
         return False
     try:
         float(val)
         return True
-    except ValueError:
+    except (ValueError, TypeError):
         return False
 
 
@@ -214,13 +224,15 @@ def SliceType(translator=defaultSliceTypeTranslator):
 
 
 def isSliceType(value, translator=defaultSliceTypeTranslator):
-    if value is None:
-        return False
-    try:
-        SliceType(translator)(value)
-        return True
-    except Exception:
-        return False
+  if value is None:
+    return False
+  try:
+    SliceType(translator)(value)
+    return True
+  except Exception:
+    return False
+
+
 
 
 def getSliceTypeIds(targetRange: range, slices: list):
@@ -313,7 +325,7 @@ def weightedMeanStd(values, weights = None):
 class DataframeActions:
 
     def considerAsNaN(value):
-      return str(value).lower() in ['nan', 'none', 'null', 'zero', 'nodata']
+      return str(value).lower() in ['nan', 'none', 'null', 'zero', 'nodata', '<na>']
 
     # Before plotting index and columns MUST BE string, for plotting those can be anything
     # all other data always tries to be float if not enforced otherwise. Any data from a csv
@@ -321,24 +333,44 @@ class DataframeActions:
     transformers = {
       'identity': lambda x: x,
       'str' : str,
-      'int' : lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else int(float(x)) if isFloat(x) else x,
-      'float': lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else float(x) if isFloat(x) else x,
-      'index': lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else str((float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else x),
+      'int' : lambda x: numpy.nan if DataframeActions.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else int(float(x)) if isFloat(x) else x,
+      'float': lambda x: numpy.nan if DataframeActions.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else float(x) if isFloat(x) else x,
+      'index': lambda x: numpy.nan if DataframeActions.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else str((float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else x),
       'forcefloat': lambda x: numpy.nan if not isFloat(x) else float(x),
       'forceint': lambda x: numpy.nan if not isFloat(x) or numpy.isnan(float(x)) else int(float(x)),
-      'mixed': lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else (float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else str(x), # nan if nan, float if float, int if int else str
+      'mixed': lambda x: numpy.nan if DataframeActions.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else (float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else str(x), # nan if nan, float if float, int if int else str
     }
 
 
     functions = {
-      'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'diff', 'round', 'floor', 'ceil', 'str', 'int', 'float'],
-      'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend', 'ljust', 'rjust', 'cjust', 'kmeans'],
+      'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'cummean', 'cummedian', 'cumstd', 'cumvar', 'cumrank', 'cumskew', 'rank', 'diff', 'round', 'floor', 'ceil', 'str', 'int', 'float'],
+      'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend', 'ljust', 'rjust', 'cjust', 'kmeans', 'sed'],
       'amidComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq', 'min', 'max'],
       'onlyAmidComputeFunctions' : ['concat', 'copy', 'kmeans_labels'],
-      'soloComputeFunctions': ['sum', 'mean', 'geometric_mean', 'median', 'std', 'var', 'count', 'skew', 'mad', 'min', 'max'],
+      'soloComputeFunctions': ['sum', 'mean', 'median', 'gmean', 'std', 'var', 'count', 'skew', 'mad', 'min', 'max', 'first', 'last'],
       'specialGroupFunctions' : ['kmeans'],
-      'nonComputeFunctions': ['set', 'cset', 'append', 'prepend', 'ljust', 'rjust', 'cjust', 'concat', 'copy', 'kmeans_labels'] + list(transformers.keys())
+      'nonComputeFunctions': ['set', 'cset', 'append', 'prepend', 'ljust', 'rjust', 'cjust', 'concat', 'copy', 'sed', 'kmeans_labels'] + list(transformers.keys())
     }
+
+    def parseSedPattern(pattern):
+      pattern = str(pattern)
+      splittedPattern = [None, None, None, None]
+      if pattern.startswith('s') and len(pattern)>=4:
+        patternDelimiter = pattern[1]
+        doubleEscaper = getStringNotIn(pattern)
+        splittedPattern = [s.replace(doubleEscaper, '\\' + patternDelimiter) for s in re.split(r'(?<!\\)' + re.escape(patternDelimiter) , pattern.replace('\\' + patternDelimiter, doubleEscaper))]
+        splittedPattern[0] = None
+        if len(splittedPattern) == 4:
+          flags = splittedPattern[3].lower()
+          splittedPattern[3] = re.IGNORECASE if 'i' in flags else 0
+          try:
+            splittedPattern[0] = re.compile(splittedPattern[1], splittedPattern[3])
+          except:
+            pass
+          if splittedPattern[0] is not None:
+            splittedPattern[1] = splittedPattern[2]
+            splittedPattern[2] = 0 if 'g' in flags else 1
+      return splittedPattern
 
     def parseKMeansParameters(parameters: list):
       res = { 'n_clusters' : 8, 'init': 'k-means++', 'n_init': 'auto', 'max_iter': 300, 'tol': 1e-4, 'algorithm': 'lloyd' , 'samples': 'yes'}
@@ -363,27 +395,36 @@ class DataframeActions:
     conditions = ['=', '!=', '<', '>', '<=', '>=', 'in', 'notin', 'xor', 'nor', 'and', 'nand']
 
     def filterFunction(frame, data, mode, quiet=False):
-        filterMap = {
-            '=': lambda x: any((pandas.isna(x) and pandas.isna(y)) or (float(x) == float(y) if isFloat([x, y]) else str(x) == str(y)) for y in data),
-            '!=': lambda x: all(((pandas.isna(x) != pandas.isna(y)) if (pandas.isna(x) or pandas.isna(y)) else (float(x) != float(y) if isFloat([x, y]) else str(x) != str(y))) for y in data),
-            '<': lambda x: any(float(x) < float(y) if isFloat([x, y]) else str(x) < str(y) for y in data),
-            '>': lambda x: any(float(x) > float(y) if isFloat([x, y]) else str(x) > str(y) for y in data),
-            '<=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) <= float(y) if isFloat([x, y]) else str(x) <= str(y)) for y in data),
-            '>=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) >= float(y) if isFloat([x, y]) else str(x) >= str(y)) for y in data),
-            'in': lambda x: x in data,
-            'notin': lambda x: x not in data,
-            'xor': lambda x: all(bool(int(y) ^ int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
-            'nor': lambda x: all(not bool(int(y) ^ int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
-            'and': lambda x: all(bool(int(y) & int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
-            'nand': lambda x: all(not bool(int(y) & int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
-        }
-        if mode not in filterMap:
-            if not quiet:
-                raise Exception(f'ERROR: could not find condition {mode}')
-        else:
-            return frame.apply(filterMap[mode])
+      regexMap = {
+      }
+
+      filterMap = {
+          '=': lambda x, data: any((pandas.isna(x) and pandas.isna(y)) or (float(x) == float(y) if isFloat([x, y]) else str(x) == str(y)) for y in data),
+          '!=': lambda x, data: all(((pandas.isna(x) != pandas.isna(y)) if (pandas.isna(x) or pandas.isna(y)) else (float(x) != float(y) if isFloat([x, y]) else str(x) != str(y))) for y in data),
+          '<': lambda x, data: any(float(x) < float(y) if isFloat([x, y]) else str(x) < str(y) for y in data),
+          '>': lambda x, data: any(float(x) > float(y) if isFloat([x, y]) else str(x) > str(y) for y in data),
+          '<=': lambda x, data: any(((pandas.isna(x) and pandas.isna(y)) or float(x) <= float(y) if isFloat([x, y]) else str(x) <= str(y)) for y in data),
+          '>=': lambda x, data: any(((pandas.isna(x) and pandas.isna(y)) or float(x) >= float(y) if isFloat([x, y]) else str(x) >= str(y)) for y in data),
+          'in': lambda x, data: x in data,
+          'notin': lambda x, data: x not in data,
+          'xor': lambda x, data: all(bool(int(y) ^ int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
+          'nor': lambda x, data: all(not bool(int(y) ^ int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
+          'and': lambda x, data: all(bool(int(y) & int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
+          'nand': lambda x, data: all(not bool(int(y) & int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
+          'match': lambda x, data: all(re.search(pattern, str(x)) is not None for pattern in data),
+          'notmatch': lambda x, data: all(re.search(pattern, str(x)) is None for pattern in data),
+      }
+
+
+      if mode not in filterMap:
+          if not quiet:
+              raise Exception(f'ERROR: could not find condition {mode}')
+      else:
+        if mode in filterMap:
+          return frame.apply(filterMap[mode], data=data)
 
     def transpose(dataframe):
+      _tmp = dataframe.index.name
       return dataframe.transpose()
 
     def dropNaN(dataframe, dropAny=False):
@@ -454,7 +495,7 @@ class DataframeActions:
         dataframe.index = dataframe.index.map(transformer)
         columnIds = [c for c in columnIds if c != 'index']
       if len(columnIds) > 0:
-        dataframe = dataframe.iloc[:, columnIds].applymap(transformer)
+        dataframe = dataframe.iloc[:, columnIds].map(transformer)
       return dataframe
 
     def transformRowIds(dataframe, rowIds, transformer):
@@ -472,7 +513,7 @@ class DataframeActions:
     # By default all data in the frame tries to be float
     def resetIndex(dataframe, transformer = None):
       dataframe = __class__.transformColumnIds(dataframe, ['index'], __class__.transformers['float'] if transformer is None else transformer)
-      dataframe.reset_index(inplace=True)
+      dataframe.reset_index(inplace=True, allow_duplicates=True)
       return dataframe
 
     def resetColumns(dataframe, transformer = None):
@@ -521,14 +562,18 @@ class DataframeActions:
       return __class__.sortColumns(dataframe.T, function, order).T
 
     def sortColumns(dataframe, function=['none'], order='asc'):
+        from natsort import natsort_keygen
         functionName = function[0]
         if functionName == 'none':
             sortKey = dataframe.reset_index(drop=True).T.reset_index(drop=True).T
-            sortKey = sortKey.sort_values(by=sortKey.index.tolist(), axis=1, ascending=(order == 'asc')).T
+            sortKey = sortKey.sort_values(by=sortKey.index.tolist(), axis=1, ascending=(order == 'asc'), key=natsort_keygen()).T
         elif functionName == 'name':
             return dataframe.sort_index(axis=1)
+        elif functionName == 'gmean':
+            from scipy.stats import gmean
+            sortKey = dataframe.apply(lambda x: gmean(x.dropna()), axis=0).reset_index(drop=True).sort_values(ascending=(order == 'asc'), key=natsort_keygen())
         else:
-            sortKey = getattr(dataframe, functionName)(axis=0).reset_index(drop=True).sort_values(ascending=(order == 'asc'))
+            sortKey = getattr(dataframe, functionName)(axis=0).reset_index(drop=True).sort_values(ascending=(order == 'asc'), key=natsort_keygen())
         return dataframe.iloc[:, sortKey.index]
 
     def reverseColumns(dataframe):
@@ -543,23 +588,26 @@ class DataframeActions:
       return __class__.sortRowsByColumnIds(dataframe.T, rowIds, function, order, quiet).T
 
     def sortRowsByColumnIds(dataframe, colIds, function=['none'], order='asc', quiet=False):
+        from natsort import natsort_keygen
         functionName = function[0]
         if not isinstance(colIds, list):
             colIds = [colIds]
         sortSeries = 'index' in colIds or functionName != 'none'
         if 'index' in colIds:
-            sortKey = pandas.to_numeric(dataframe.index, errors="ignore").to_series()
+          sortKey = dataframe.index
+          sortKey = sortKey.map(__class__.transformers['float']).to_series()
         else:
-            sortKey = dataframe.iloc[:, colIds].apply(pandas.to_numeric, errors="ignore")
+            sortKey = dataframe.iloc[:, colIds]
+            sortKey = sortKey.map(__class__.transformers['float'])
             if functionName != 'none':
                 sortKey = getattr(sortKey, functionName)(axis=1, numeric_only=True)
 
         sortKey.reset_index(drop=True, inplace=True)
         if sortSeries:
-            sortKey.sort_values(ascending=(order == 'asc'), inplace=True)
+            sortKey.sort_values(ascending=(order == 'asc'), inplace=True, key=natsort_keygen())
         else:
             sortKey.columns = range(sortKey.shape[1])
-            sortKey.sort_values(by=sortKey.columns.to_list(), axis=0, ascending=(order == 'asc'), inplace=True)
+            sortKey.sort_values(by=sortKey.columns.to_list(), axis=0, ascending=(order == 'asc'), inplace=True, key=natsort_keygen())
 
         return dataframe.iloc[sortKey.index, :]
 
@@ -581,7 +629,12 @@ class DataframeActions:
       if functionName not in __class__.functions['soloComputeFunctions']:
         raise Exception(f'Normalise function \'{functionName}\' not found!')
 
-      normSeries = getattr(dataframe.iloc[:, colIds].apply(pandas.to_numeric, errors='coerce'), functionName)(axis=0)
+      if functionName == 'gmean':
+        from scipy.stats import gmean
+        normSeries = dataframe.iloc[:, colIds].apply(pandas.to_numeric, errors='coerce').apply(lambda x: gmean(x.dropna()), axis=0)
+      else:
+        normSeries = getattr(dataframe.iloc[:, colIds].apply(pandas.to_numeric, errors='coerce'), functionName)(axis=0)
+
       dataframe.iloc[:, colIds] = dataframe.iloc[:, colIds].div(normSeries, axis=1)
       return dataframe
 
@@ -611,7 +664,7 @@ class DataframeActions:
                 applyColumnIds += targetColumnIds
 
                 if functionName in __class__.transformers.keys():
-                  dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(__class__.transformers[functionName])
+                  dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].map(__class__.transformers[functionName])
                 elif functionName in __class__.functions['pandasSelfFunctions']:
                     if functionName == 'abs':
                       dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].abs().values
@@ -624,9 +677,13 @@ class DataframeActions:
                       if len(functionParams) > 0 and not str(functionParams[0]).isdigit() and not quiet:
                         print('WARNING: round function parameter needs to be an integer', file=sys.stderr)
                       dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].round(decimals).values
+                    elif functionName in ['cummean', 'cummedian', 'cumstd', 'cumvar', 'cumrank', 'cumskew']:
+                      functionName = functionName[3:]
+                      dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds].apply(pandas.to_numeric, errors='coerce').expanding(), functionName)()
                     else:
                       dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds], functionName)(axis=0).values
                 elif functionName == 'kmeans':
+                  import sklearn.cluster
                   kmeanParams = __class__.parseKMeansParameters(functionParams)
                   kmeans = sklearn.cluster.KMeans(n_clusters=kmeanParams['n_clusters'], init=kmeanParams['init'], n_init=kmeanParams['n_init'], max_iter=kmeanParams['max_iter'], tol=kmeanParams['tol']).fit(dataframe.iloc[:, applyColumnIds].to_numpy())
                   if kmeans.n_iter_ >= kmeanParams['max_iter'] and not quiet:
@@ -635,11 +692,11 @@ class DataframeActions:
                 elif functionName == 'append':
                     if len(functionParams) == 0:
                       raise Exception('ERROR: no parameters given for function append, skipping')
-                    dataframe.iloc[:, applyColumnIds] = (dataframe.iloc[:, applyColumnIds].astype(str) + ''.join([str(x) for x in functionParams])).apply(pandas.to_numeric, errors='ignore')
+                    dataframe.iloc[:, applyColumnIds] = (dataframe.iloc[:, applyColumnIds].astype(str) + ''.join([str(x) for x in functionParams])).map(__class__.transformers['float'])
                 elif functionName == 'prepend':
                     if len(functionParams) == 0:
                       raise Exception('ERROR: no parameters given for function prepend, skipping')
-                    dataframe.iloc[:, applyColumnIds] = (''.join([str(x) for x in functionParams]) + dataframe.iloc[:, applyColumnIds].astype(str)).apply(pandas.to_numeric, errors='ignore')
+                    dataframe.iloc[:, applyColumnIds] = (''.join([str(x) for x in functionParams]) + dataframe.iloc[:, applyColumnIds].astype(str)).map(__class__.transformers['float'])
                 elif functionName == 'set':
                     if len(functionParams) < 1:
                       raise Exception('ERROR: function set requires a parameters')
@@ -658,6 +715,16 @@ class DataframeActions:
                     dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].astype(str).apply(
                       lambda s: s.apply(lambda v: getattr(v, padFunc)(max(s.str.len()) if padWidth is None else padWidth, padChar))
                     )
+                elif functionName in ['sed']:
+                  for pattern in functionParams:
+                    parsedPattern = __class__.parseSedPattern(pattern)
+                    if parsedPattern is None or None in parsedPattern:
+                      if not quiet:
+                        print(f'WARNING: invalid sed pattern {pattern} in apply function! A valid pattern is s/pattern/replace/ig', file=sys.stderr)
+                    else:
+                      dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].astype(str).apply(
+                        lambda x: x.apply(lambda v: re.sub(parsedPattern[0], parsedPattern[1], v, count=parsedPattern[2]))
+                      )
                 elif functionName == 'polyfit':
                     try:
                         fitDim = 1 if len(functionParams) == 0 else int(functionParams[0])
@@ -679,7 +746,7 @@ class DataframeActions:
                     if any(not isFloat(x) for x in functionParams) and not quiet:
                         print(f'WARNING: applying function {functionName} not compatible with non-float arguments!', file=sys.stderr)
                     param = getattr(numpy, functionName)([x for x in functionParams if isFloat(x)])
-                    dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].apply(pandas.to_numeric, errors='coerce').applymap(lambda x: getattr(numpy, functionName)([x, param]), 'ignore')
+                    dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].apply(pandas.to_numeric, errors='coerce').map(lambda x: getattr(numpy, functionName)([x, param]), 'ignore')
                 else:
                     if any(not isFloat(x) for x in functionParams) and not quiet:
                         print(f'WARNING: applying function {functionName} not compatible with non-float arguments!', file=sys.stderr)
@@ -699,7 +766,7 @@ class DataframeActions:
                     if functionName == 'concat':
                         for targetColumnIdx in targetColumnIds:
                             for applyColumnIdx in applyColumnIds:
-                                dataframe.iloc[:, targetColumnIdx] = dataframe.iloc[:, targetColumnIdx].astype(str).str.cat(dataframe.iloc[:, applyColumnIdx].astype(str), join='right', sep=str(functionParams[0]) if len(functionParams) > 0 else '').apply(pandas.to_numeric, errors='ignore')
+                                dataframe.isetitem(targetColumnIdx, dataframe.iloc[:, targetColumnIdx].astype("string").str.cat(dataframe.iloc[:, applyColumnIdx].astype("string"), join='right', sep=str(functionParams[0]) if len(functionParams) > 0 else '').map(__class__.transformers['float']))
                     elif functionName == 'copy':
                         if len(applyColumnIds) > 0 and not quiet:
                             print('WARNING: only the last column/row has an effect with apply function copy!', file=sys.stderr)
@@ -724,6 +791,10 @@ class DataframeActions:
         if len(functionParams) == 0:
           raise Exception('--add-function set requires one parameter as set constant')
         newCol = pandas.Series(data=[functionParams[0]] * dataframe.shape[0], name=name, index=dataframe.index)
+      elif functionName == 'gmean':
+        from scipy.stats import gmean
+        newCol = dataframe.apply(pandas.to_numeric, errors='coerce').apply(lambda x: gmean(x.dropna()), axis=1)
+        newCol.name = name
       else:
         newCol = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=1)
         newCol.name = name
@@ -745,7 +816,7 @@ class DataframeActions:
       else:
         print('WARNING: grouping n rows/columns with a non-numerical index will use a interpolated version', file=sys.stderr)
         index = dataframe.index
-      dataframe = getattr(dataframe.groupby(numpy.arange(len(dataframe.index)) // n, axis=0), functionName)()
+      dataframe = getattr(dataframe.groupby(numpy.arange(len(dataframe.index)) // n, axis=0, dropna=False), functionName)(numeric_only=False)
       if treatIndexAsFloat:
         dataframe = __class__.setIndexColumnByIdx(dataframe, 0, True)
       else:
@@ -760,19 +831,20 @@ class DataframeActions:
       functionName = function[0]
       if functionName == 'kmeans':
         raise Exception('grouping to a single row/column is incompatible with the kmeans function')
-      return getattr(dataframe.apply(pandas.to_numeric, errors='coerce').groupby(lambda _: rowName), functionName)()
+      return getattr(dataframe.apply(pandas.to_numeric, errors='coerce').groupby(lambda _: rowName, dropna=False), functionName)()
 
     def groupByRowIds(dataframe, rowIds, function=['sum'], specialColumnPrefix='_'):
       rowIds = rowIds if isinstance(rowIds, list) else [rowIds]
       rowIds = ['index' if x == 'columns' else x for x in rowIds]
       return __class__.groupByColumnIds(dataframe.T, rowIds, function, specialColumnPrefix).T
 
-    def groupByColumnIds(dataframe, columnIds, function=['sum'], specialColumnPrefix='_'):
+    def groupByColumnIds(dataframe, columnIds, function=['sum'], specialColumnPrefix='_', quiet=False):
         functionName = function[0]
         functionParams = function[1:]
         columnIds = columnIds if isinstance(columnIds, list) else [columnIds]
 
         if functionName == 'kmeans':
+          import sklearn.cluster
           kmeanParams = __class__.parseKMeansParameters(functionParams)
           kmeans = sklearn.cluster.KMeans(n_clusters=kmeanParams['n_clusters'], init=kmeanParams['init'], n_init=kmeanParams['n_init'], max_iter=kmeanParams['max_iter'], tol=kmeanParams['tol']).fit(dataframe.iloc[:, columnIds])
           if kmeans.n_iter_ >= kmeanParams['max_iter'] and not quiet:
@@ -781,17 +853,21 @@ class DataframeActions:
           if kmeanParams['samples']:
             dataframe = pandas.concat([pandas.Series(numpy.unique(kmeans.labels_, return_counts=True)[1], name=specialColumnPrefix + 'samples'), dataframe], axis=1)
           dataframe.index.name = 'cluster'
-          return __class__.transformColumnIds(dataframe, ['index'], __class__.transformers['index'])
+          return __class__.transformColumnIds(dataframe, ['index'], __class__.transformers['index']).map(__class__.transformers['float'])
         else:
           seen = set()
           columnIds = [x for x in columnIds if x not in seen and not seen.add(x)]
           newColumnLabels = [dataframe.columns[x] for x in columnIds] + [dataframe.columns[x] for x in range(dataframe.shape[1]) if x not in columnIds]
           dataframe.columns = list(range(dataframe.shape[1]))
-          dataframe = getattr(dataframe.convert_dtypes().groupby(by=columnIds, as_index=False, sort=False), functionName)()
+          if functionName == 'gmean':
+            from scipy.stats import gmean
+            dataframe = dataframe.convert_dtypes().groupby(by=columnIds, as_index=False, sort=False, dropna=False).aggregate(lambda x: gmean(x.dropna()))
+          else:
+            dataframe = getattr(dataframe.convert_dtypes().groupby(by=columnIds, as_index=False, sort=False, dropna=False), functionName)()
           if len(dataframe.columns) != len(newColumnLabels):
             raise Exception('Grouping dropped "nuisances" columns, and is considered not successful. This is probably due to incompatible data types in columns.')
           dataframe.columns = newColumnLabels
-          return __class__.transformColumnIds(dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:], ['index'], __class__.transformers['index'])
+          return __class__.transformColumnIds(dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:], ['index'], __class__.transformers['index']).map(__class__.transformers['float'])
 
     def stackRowId(dataframe, rowId):
       if rowId == 'columns':
@@ -799,7 +875,7 @@ class DataframeActions:
         dataframe = dataframe.T.set_index(dataframe.T.iloc[:, 0], append=True).T
         dataframe = dataframe.iloc[1:, :].stack(0)
         dataframe = dataframe.to_frame() if not isinstance(dataframe, pandas.DataFrame) else dataframe
-        dataframe = dataframe.reset_index()
+        dataframe = dataframe.reset_index(allow_duplicates=True)
         dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:]
         dataframe.columns = ['columns'] + dataframe.columns.tolist()[1:]
         dataframe.index.name = l0Name
@@ -808,7 +884,7 @@ class DataframeActions:
         dataframe = dataframe.T.set_index(dataframe.T.iloc[:, rowId], append=True).T
         dataframe = dataframe.iloc[1:, :].stack(1)
         dataframe = dataframe.to_frame() if not isinstance(dataframe, pandas.DataFrame) else dataframe
-        dataframe = dataframe.reset_index()
+        dataframe = dataframe.reset_index(allow_duplicates=True)
         dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:]
         dataframe.index.name = l0Name
       return __class__.transformColumnIds(__class__.transformRowIds(__class__.transformColumnIds(dataframe, list(range(dataframe.shape[1])), __class__.transformers['float']), ['columns'], __class__.transformers['index']), ['index'], __class__.transformers['index'])
@@ -825,19 +901,20 @@ class DataframeActions:
         dataframe = dataframe.set_index(dataframe.iloc[:, 0], append=True).iloc[:, 1:]
         dataframe = dataframe.unstack(0)
         dataframe = dataframe.to_frame() if not isinstance(dataframe, pandas.DataFrame) else dataframe
-        dataframe = dataframe.T.reset_index()
+
+        dataframe = dataframe.T.reset_index(allow_duplicates=True)
         dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:].T
         dataframe.index.name = l0Name
-        dataframe.columns.name = None
+        dataframe.columns.name = l0Name
       else:
         l0Name = dataframe.index.name
         dataframe = __class__.dropColumnsByIds(dataframe.set_index(dataframe.iloc[:, columnId], append=True), [columnId])
         dataframe = dataframe.unstack(1)
         dataframe = dataframe.to_frame() if not isinstance(dataframe, pandas.DataFrame) else dataframe
-        dataframe = dataframe.T.reset_index()
+        dataframe = dataframe.T.reset_index(allow_duplicates=True)
         dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:].T
         dataframe.index.name = l0Name
-        dataframe.columns.name = None
+        dataframe.columns.name = l0Name
       return __class__.transformColumnIds(__class__.transformRowIds(__class__.transformColumnIds(dataframe, list(range(dataframe.shape[1])), __class__.transformers['float']), ['columns'], __class__.transformers['index']), ['index'], __class__.transformers['index'])
 
     def joinFrames(dataframes, function='index', how='outer'):
@@ -880,6 +957,7 @@ class DataframeActions:
         return newFrames
 
     def printFrames(filenames, dataframe, frameIndex, frameCount, precision=None):
+        import shutil, textwrap
         if not isinstance(filenames, list):
             filenames = [filenames]
         consoleWidth = shutil.get_terminal_size((80, 40))
@@ -892,7 +970,8 @@ class DataframeActions:
             print(textwrap.fill(pFiles, width=consoleWidth.columns, subsequent_indent=' '))
         print(pSep)
         with pandas.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', consoleWidth.columns, 'display.max_columns', None, 'display.float_format', None if precision is None else f'{{:.{precision}f}}'.format):
-            print(dataframe)
+          dataframe.columns.name = None
+          print(dataframe)
         print(pSep)
 
     def framesToCSV(dataframes, filenames=['stdout'], separator=None, quiet=False, threads=0, precision=None):
@@ -939,7 +1018,7 @@ parserFileOptions.add_argument("--comment", help="ignores lines starting with (d
 parserFileOptions.add_argument("--delimiter", help="data delimiter (auto detected by default)", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--no-columns", help="do not use a column row", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--no-index", help="do not use a index column", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--threads", help="number of threads to decompress files", default=multiprocessing.cpu_count(), type=int, choices=Range(0, None), action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--threads", help="number of threads to decompress files", default=cpu_count(), type=int, choices=Range(0, None), action=ChildAction, parent=inputFileArgument)
 
 
 parserFileOptions.add_argument("--index-icolumn", help="set index column by index", type=int, sticky_default=True, choices=Range(None, None), default=None, action=ChildAction, parent=inputFileArgument)
@@ -1090,7 +1169,7 @@ parserLinePlotOptions.add_argument('--line-fill', choices=['none', 'tozeroy', 't
 parserLinePlotOptions.add_argument('--line-stack', help='stack line input traces (default %(default)s)', default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserLinePlotOptions.add_argument('--line-shape', choices=['linear', 'spline', 'hv', 'vh', 'hvh', 'vhv'], help='choose line shape (default %(default)s)', default='linear', action=ChildAction, parent=inputFileArgument)
 parserLinePlotOptions.add_argument('--line-dash', choices=['solid', 'dot', 'dash', 'longdash', 'dashdot', 'longdashdot'], help='choose line dash (default %(default)s)', default='solid', action=ChildAction, parent=inputFileArgument)
-parserLinePlotOptions.add_argument('--line-markers', choices=['circle', 'circle-open', 'circle-dot', 'circle-open-dot', 'square', 'square-open', 'square-dot', 'square-open-dot', 'diamond', 'diamond-open', 'diamond-dot', 'diamond-open-dot', 'cross', 'cross-open', 'cross-dot', 'cross-open-dot', 'x', 'x-open', 'x-dot', 'x-open-dot', 'triangle-up', 'triangle-up-open', 'triangle-up-dot', 'triangle-up-open-dot', 'triangle-down', 'triangle-down-open', 'triangle-down-dot', 'triangle-down-open-dot', 'triangle-left', 'triangle-left-open', 'triangle-left-dot', 'triangle-left-open-dot', 'triangle-right', 'triangle-right-open', 'triangle-right-dot', 'triangle-right-open-dot', 'triangle-ne', 'triangle-ne-open', 'triangle-ne-dot', 'triangle-ne-open-dot', 'triangle-se', 'triangle-se-open', 'triangle-se-dot', 'triangle-se-open-dot', 'triangle-sw', 'triangle-sw-open', 'triangle-sw-dot', 'triangle-sw-open-dot', 'triangle-nw', 'triangle-nw-open', 'triangle-nw-dot', 'triangle-nw-open-dot', 'pentagon', 'pentagon-open', 'pentagon-dot', 'pentagon-open-dot', 'hexagon', 'hexagon-open', 'hexagon-dot', 'hexagon-open-dot', 'hexagon2', 'hexagon2-open', 'hexagon2-dot', 'hexagon2-open-dot', 'octagon', 'octagon-open', 'octagon-dot', 'octagon-open-dot', 'star', 'star-open', 'star-dot', 'star-open-dot', 'hexagram', 'hexagram-open', 'hexagram-dot', 'hexagram-open-dot', 'star-triangle-up', 'star-triangle-up-open', 'star-triangle-up-dot', 'star-triangle-up-open-dot', 'star-triangle-down', 'star-triangle-down-open', 'star-triangle-down-dot', 'star-triangle-down-open-dot', 'star-square', 'star-square-open', 'star-square-dot', 'star-square-open-dot', 'star-diamond', 'star-diamond-open', 'star-diamond-dot', 'star-diamond-open-dot', 'diamond-tall', 'diamond-tall-open', 'diamond-tall-dot', 'diamond-tall-open-dot', 'diamond-wide', 'diamond-wide-open', 'diamond-wide-dot', 'diamond-wide-open-dot', 'hourglass', 'hourglass-open', 'bowtie', 'bowtie-open', 'circle-cross', 'circle-cross-open', 'circle-x', 'circle-x-open', 'square-cross', 'square-cross-open', 'square-x', 'square-x-open', 'diamond-cross', 'diamond-cross-open', 'diamond-x', 'diamond-x-open', 'cross-thin', 'cross-thin-open', 'x-thin', 'x-thin-open', 'asterisk', 'asterisk-open', 'hash', 'hash-open', 'hash-dot', 'hash-open-dot', 'y-up', 'y-up-open', 'y-down', 'y-down-open', 'y-left', 'y-left-open', 'y-right', 'y-right-open', 'line-ew', 'line-ew-open', 'line-ns', 'line-ns-open', 'line-ne', 'line-ne-open', 'line-nw', 'line-nw-open', 'arrow-up', 'arrow-up-open', 'arrow-down', 'arrow-down-open', 'arrow-left', 'arrow-left-open', 'arrow-right', 'arrow-right-open', 'arrow-bar-up', 'arrow-bar-up-open', 'arrow-bar-down', 'arrow-bar-down-open', 'arrow-bar-left', 'arrow-bar-left-open', 'arrow-bar-right', 'arrow-bar-right-open', 'arrow', 'arrow-open', 'arrow-wide', 'arrow-wide-open'], help='choose line marker (default circle)', default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
+parserLinePlotOptions.add_argument('--line-markers', choices=['none', 'circle', 'circle-open', 'circle-dot', 'circle-open-dot', 'square', 'square-open', 'square-dot', 'square-open-dot', 'diamond', 'diamond-open', 'diamond-dot', 'diamond-open-dot', 'cross', 'cross-open', 'cross-dot', 'cross-open-dot', 'x', 'x-open', 'x-dot', 'x-open-dot', 'triangle-up', 'triangle-up-open', 'triangle-up-dot', 'triangle-up-open-dot', 'triangle-down', 'triangle-down-open', 'triangle-down-dot', 'triangle-down-open-dot', 'triangle-left', 'triangle-left-open', 'triangle-left-dot', 'triangle-left-open-dot', 'triangle-right', 'triangle-right-open', 'triangle-right-dot', 'triangle-right-open-dot', 'triangle-ne', 'triangle-ne-open', 'triangle-ne-dot', 'triangle-ne-open-dot', 'triangle-se', 'triangle-se-open', 'triangle-se-dot', 'triangle-se-open-dot', 'triangle-sw', 'triangle-sw-open', 'triangle-sw-dot', 'triangle-sw-open-dot', 'triangle-nw', 'triangle-nw-open', 'triangle-nw-dot', 'triangle-nw-open-dot', 'pentagon', 'pentagon-open', 'pentagon-dot', 'pentagon-open-dot', 'hexagon', 'hexagon-open', 'hexagon-dot', 'hexagon-open-dot', 'hexagon2', 'hexagon2-open', 'hexagon2-dot', 'hexagon2-open-dot', 'octagon', 'octagon-open', 'octagon-dot', 'octagon-open-dot', 'star', 'star-open', 'star-dot', 'star-open-dot', 'hexagram', 'hexagram-open', 'hexagram-dot', 'hexagram-open-dot', 'star-triangle-up', 'star-triangle-up-open', 'star-triangle-up-dot', 'star-triangle-up-open-dot', 'star-triangle-down', 'star-triangle-down-open', 'star-triangle-down-dot', 'star-triangle-down-open-dot', 'star-square', 'star-square-open', 'star-square-dot', 'star-square-open-dot', 'star-diamond', 'star-diamond-open', 'star-diamond-dot', 'star-diamond-open-dot', 'diamond-tall', 'diamond-tall-open', 'diamond-tall-dot', 'diamond-tall-open-dot', 'diamond-wide', 'diamond-wide-open', 'diamond-wide-dot', 'diamond-wide-open-dot', 'hourglass', 'hourglass-open', 'bowtie', 'bowtie-open', 'circle-cross', 'circle-cross-open', 'circle-x', 'circle-x-open', 'square-cross', 'square-cross-open', 'square-x', 'square-x-open', 'diamond-cross', 'diamond-cross-open', 'diamond-x', 'diamond-x-open', 'cross-thin', 'cross-thin-open', 'x-thin', 'x-thin-open', 'asterisk', 'asterisk-open', 'hash', 'hash-open', 'hash-dot', 'hash-open-dot', 'y-up', 'y-up-open', 'y-down', 'y-down-open', 'y-left', 'y-left-open', 'y-right', 'y-right-open', 'line-ew', 'line-ew-open', 'line-ns', 'line-ns-open', 'line-ne', 'line-ne-open', 'line-nw', 'line-nw-open', 'arrow-up', 'arrow-up-open', 'arrow-down', 'arrow-down-open', 'arrow-left', 'arrow-left-open', 'arrow-right', 'arrow-right-open', 'arrow-bar-up', 'arrow-bar-up-open', 'arrow-bar-down', 'arrow-bar-down-open', 'arrow-bar-left', 'arrow-bar-left-open', 'arrow-bar-right', 'arrow-bar-right-open', 'arrow', 'arrow-open', 'arrow-wide', 'arrow-wide-open'], help='choose line marker (default circle)', default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
 parserLinePlotOptions.add_argument('--line-marker-width', help='choose marker line width (default %(default)s)', type=int, default=1, choices=Range(0,), action=ChildAction, parent=inputFileArgument)
 parserLinePlotOptions.add_argument('--line-marker-size', help='choose line marker size (default %(default)s)', type=int, default=6, choices=Range(0, None), action=ChildAction, parent=inputFileArgument)
 parserLinePlotOptions.add_argument('--line-marker-opacity', help='choose line marker size (default %(default)s)', default='auto', choices=Range(0, 1, ['auto']), action=ChildAction, parent=inputFileArgument)
@@ -1117,8 +1196,9 @@ parserViolinPlotOptions.add_argument("--violin-group-gap", help="gap between vio
 
 parserBoxPlotOptions = parser.add_argument_group('box plot options')
 parserBoxPlotOptions.add_argument("--box-mode", choices=['overlay', 'group'], help="choose boxmode (default %(default)s)", default='overlay')
+parserBoxPlotOptions.add_argument("--box-points", help="choose to show box points (not compatible with precomputed boxes, default %(default)s)", default='off', choices=['off', 'all', 'outliers', 'suspectedoutliers'], type=str, action=ChildAction, parent=inputFileArgument)
 parserBoxPlotOptions.add_argument("--box-whisker", help="choose what the box whisker are representing in precomputed box types (e.g. iqr, minmax or p99 to p76 - percentiles, default %(default)s)", default='minmax', type=str, action=ChildAction, parent=inputFileArgument)
-parserBoxPlotOptions.add_argument("--box-type", choices=['raw', 'precomputed'], help="choose whether to precompute boxes or to include all raw values (default %(default)s)", default='precomputed', action=ChildAction, parent=inputFileArgument)
+parserBoxPlotOptions.add_argument("--box-type", choices=['auto', 'raw', 'precomputed'], help="choose whether to precompute boxes or to include all raw values (default %(default)s)", default='auto', action=ChildAction, parent=inputFileArgument)
 parserBoxPlotOptions.add_argument("--box-mean", choices=['none', 'line', 'dot'], help="choose box mean (default %(default)s)", default='dot', action=ChildAction, parent=inputFileArgument)
 parserBoxPlotOptions.add_argument("--box-width", help="box width (default %(default)s)", type=float, default=0, choices=Range(0,), action=ChildAction, parent=inputFileArgument)
 parserBoxPlotOptions.add_argument("--box-gap", help="gap between boxes (default %(default)s) (not compatible with box-width)", type=float, default=0.3, choices=Range(0, 1))
@@ -1176,6 +1256,8 @@ parserPlotAxisOptions.add_argument("--y-grid-colour", help="set y-grid colour", 
 parserPlotAxisOptions.add_argument("--x-grid-colour", help="set x-grid colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-colour", help="set y-axis colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-colour", help="set x-axis colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-tick-colour", help="set y-tick colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-tick-colour", help="set x-tick colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-line-width", help="set y-axis line width (default %(default)s)", type=float, choices=Range(0, None), default=0, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-line-width", help="set x-axis line width (default %(default)s)", type=float, choices=Range(0, None), default=0, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-show-grid", help="set the visibility of the y-grid (default %(default)s)", choices=['auto', 'on', 'off'], default='auto', action=ChildAction, parent=inputFileArgument)
@@ -1263,6 +1345,8 @@ parserOutputOptions.add_argument("--debug", action="store_true", help="output so
 argcomplete.autocomplete(parser)
 args = parser.parse_args()
 
+import sys
+
 violinMode = 'overlay'
 commentColour = ''
 commentBackgroundColour = ''
@@ -1283,8 +1367,8 @@ elif (args.per_frame_colours):
     args.per_input_colours = False
 
 # Sanitize arguments
-for input in args.input:
-    options = input['args']
+for inputArgs in args.input:
+    options = inputArgs['args']
     # options.ignore_icolumns = list(set(options.ignore_icolumns))
     # options.ignore_columns = list(set(options.ignore_columns))
 
@@ -1321,10 +1405,8 @@ for input in args.input:
     if options.colour_cycle is None:
         options.colour_cycle = 'global'
 
-    options.y_grid_colour = f"'{options.y_grid_colour}'" if options.y_grid_colour is not None else f"'{options.grid_colour}'" if options.grid_colour is not None else None
-    options.x_grid_colour = f"'{options.x_grid_colour}'" if options.x_grid_colour is not None else f"'{options.grid_colour}'" if options.grid_colour is not None else None
-    options.x_colour = f"'{options.y_colour}'" if options.y_colour is not None else None
-    options.y_colour = f"'{options.x_colour}'" if options.x_colour is not None else None
+    options.y_grid_colour = options.grid_colour if options.y_grid_colour is None else options.y_grid_colour
+    options.x_grid_colour = options.grid_colour if options.x_grid_colour is None else options.x_grid_colour
     options.y_line_width_forced = 'y_line_width' in [i for (i, _) in options.ordered_args]
     options.x_line_width_forced = 'x_line_width' in [i for (i, _) in options.ordered_args]
 
@@ -1344,22 +1426,34 @@ for input in args.input:
       _check = getattr(options, opt)
       setattr(options, opt, translate[_check] if _check in translate else float(_check))
 
-    options.y_tick0 = None if options.y_tick0 is None else f"'{options.y_tick0}'"
-    options.x_tick0 = None if options.x_tick0 is None else f"'{options.x_tick0}'"
-    options.y_dtick = None if options.y_dtick is None else f"'{options.y_dtick}'"
-    options.x_dtick = None if options.x_dtick is None else f"'{options.x_dtick}'"
+    # off or string
+    translate = {'off': False }
+    for opt in ['box_points']:
+      _check = getattr(options, opt)
+      setattr(options, opt, translate[_check] if _check in translate else f"'{_check}'")
+
+    # None or string
+    for opt in ['x_colour', 'y_colour', 'x_tick_colour', 'y_tick_colour', 'x_grid_colour', 'y_grid_colour', 'x_tick0', 'y_tick0', 'x_dtick', 'y_dtick']:
+      _check = getattr(options, opt)
+      setattr(options, opt, None if _check is None else f"'{_check}'")
+
+    if options.box_points is not False and options.box_type == 'precomputed':
+      if not args.quiet:
+        print(f"WARNING: option --box-points {options.box_points} is not compatible with --box-type {options.box_type}. Proceeding with --box-type raw", file=sys.stderr)
+      options.box_type = 'auto'
 
     options.y_autorange = 'off' if options.plot == 'dendrogram' and options.y_autorange is not None and not options.vertical else options.y_autorange
     options.x_autorange = 'off' if options.plot == 'dendrogram' and options.x_autorange is not None and not options.horizontal else options.x_autorange
     options.y_autorange = f"'{options.y_autorange}'" if options.y_autorange not in ['on', 'off', None] else False if options.y_autorange == 'off' or options.y_range_to is not None or options.y_range_from is not None else True
     options.x_autorange = f"'{options.x_autorange}'" if options.x_autorange not in ['on', 'off', None] else False if options.x_autorange == 'off' or options.x_range_to is not None or options.x_range_from is not None else True
 
+    options.box_type = options.box_type if not options.box_type == 'auto' else ('raw' if options.box_points is not False else 'precomputed')
+
     if options.legend_entries is None:
         if args.theme != 'palette':
             options.legend_entries = 'all'
         else:
             options.legend_entries = 'unique'
-
 
     if options.plot != 'line':
         # If explicitly set the range-to the automatic ranging would start at the
@@ -1370,7 +1464,6 @@ for input in args.input:
             options.x_range_from = 0
 
     violinMode = options.violin_mode
-
 
     if options.colour_scale_orientation == 'horizontal':
       options.colour_scale_orientation == 'h'
@@ -1458,12 +1551,17 @@ defaultPadMargin = False
 
 doneSomething = False
 
-stdinBuf = None
-stdinReferenced = 0 if os.path.exists('stdin') else sum([1 if filename == 'stdin' else 0 for input in args.input for filename in input['value']])
+import pandas, numpy, pickle, xopen, os, io, gc, re, copy
+pandas.set_option('future.no_silent_downcasting', True)
+pandas.set_option('copy_on_write', True)
 
-for input in args.input:
-    inputOptions = input['args']
-    inputFileNames = input['value']
+stdinBuf = None
+stdinReferenced = 0 if os.path.exists('stdin') else sum([1 if filename == 'stdin' else 0 for inputArgs in args.input for filename in inputArgs['value']])
+
+
+for inputArgs in args.input:
+    inputOptions = inputArgs['args']
+    inputFileNames = inputArgs['value']
     inputOptions.filenames = inputFileNames
     inputOptions.traceCount = 0
     inputOptions.frameCount = 0
@@ -1515,9 +1613,7 @@ for input in args.input:
             elif (not isinstance(frame, pandas.DataFrame)):
                 raise Exception(f'pickle file {filename} is not a pandas data frame!')
             else:
-                frame = frame.apply(pandas.to_numeric, errors='ignore')
-                frame = frame.applymap(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in DataframeActions.considerAsNaN else x)
-
+                frame = frame.map(DataframeActions.transformers['float'])
                 frame = DataframeActions.transformColumnIds(frame, ['index'], DataframeActions.transformers['index'])
                 frame = DataframeActions.transformRowIds(frame, ['columns'], DataframeActions.transformers['index'])
 
@@ -1535,8 +1631,8 @@ for input in args.input:
             useDelimiter = options.delimiter
             # FUTURE: pyarrow
             # useDelimiter = options.delimiter if options.delimiter is not None else csv.Sniffer().sniff(io.BytesIO(buf).read(4096).decode()).delimiter
-            
-            emptyBuf = len(buf) == 0 or buf == b'\n'
+
+            emptyBuf = len(buf) == 0 or buf == b'\n' or buf == b'""'
             frame = pandas.DataFrame() if emptyBuf else pandas.read_csv(io.BytesIO(buf),
                                     sep=useDelimiter,
                                     header=None,
@@ -1546,23 +1642,24 @@ for input in args.input:
                                     # FUTURE: pyarrow
                                     # engine='pyarrow'
                     )
+            emptyBuf = emptyBuf or frame.shape == (0,0)
 
             if not options.no_index and not emptyBuf:
                 frame.index.name = frame.iloc[0].name
 
             if not options.no_columns and not emptyBuf:
                 frame.columns = frame.iloc[0]
-                frame.columns.name = None
+                frame.columns.name = frame.index.name
                 frame = DataframeActions.dropRowsByIds(frame, [0])
 
             if args.debug:
               print("DEBUG: parsing number formats", file=sys.stderr)
             # Relatively slow, though I don't see a way around it
-            frame = frame.apply(pandas.to_numeric, errors='ignore')
-            frame = frame.applymap(DataframeActions.transformers['float'])
+            frame = frame.map(DataframeActions.transformers['float'])
 
             frame = DataframeActions.transformColumnIds(frame, ['index'], DataframeActions.transformers['index'])
             frame = DataframeActions.transformRowIds(frame, ['columns'], DataframeActions.transformers['index'])
+            frame.columns.name = frame.index.name
 
             options.frameCount = 1
             options.frameIndex = inputOptions.frameCount
@@ -1885,10 +1982,10 @@ for input in args.input:
                     else:
                         frame = DataframeActions.renameColumns(frame, list(range(frame.shape[1])), optionValue)
                 elif optionName == 'icolumn_names':
-                    if optionValue[0] != 'index' or not isSliceType(optionValue[0]):
-                        if not args.quiet:
-                            print(f'WARNING: invalid index or slice provided to {optionName}', file=sys.stderr)
-                    if len(optionValue) > 1:
+                    if optionValue[0] != 'index' and not isSliceType(optionValue[0]):
+                      if not args.quiet:
+                        print(f'WARNING: invalid index or slice provided to {optionName}', file=sys.stderr)
+                    elif len(optionValue) > 1:
                         columnIds = ['index'] if optionValue[0] == 'index' else DataframeActions.sliceToColumnIds(frame, SliceType()(optionValue[0]))
                         frame = DataframeActions.renameColumns(frame, columnIds, optionValue[1:])
                 elif optionName == 'row_names':
@@ -1909,10 +2006,10 @@ for input in args.input:
                     else:
                         frame = DataframeActions.renameRows(frame, list(range(frame.shape[0])), optionValue)
                 elif optionName == 'irow_names':
-                    if optionValue[0] != 'columns' or not isSliceType(optionValue[0]):
+                    if optionValue[0] != 'columns' and not isSliceType(optionValue[0]):
                         if not args.quiet:
                             print(f'WARNING: invalid index or slice provided to {optionName}', file=sys.stderr)
-                    if len(optionValue) > 1:
+                    elif len(optionValue) > 1:
                         rowIds = ['columns'] if optionValue[0] == 'columns' else DataframeActions.sliceToRowIds(frame, SliceType()(optionValue[0]))
                         frame = DataframeActions.renameRows(frame, rowIds, optionValue[1:])
                 elif optionName == 'drop_nan':
@@ -2103,7 +2200,6 @@ for input in args.input:
 
     gc.collect()
 
-
 scriptPath = None
 secondaryScriptPaths = []
 # Separate python outputs from actual output put the first script
@@ -2148,6 +2244,8 @@ if args.theme == 'palette' and args.colour_debug:
 
 subplotGrid = [{k: int(v) for (k, v) in dim.items()} for dim in subplotGrid]
 
+from seaborn import color_palette
+
 for r in range(1, int(subplotGrid[1]['max']) + 1):
     for c in range(1, int(subplotGrid[0]['max']) + 1):
         if r in subplotGridDefinition and c in subplotGridDefinition[r]:
@@ -2157,8 +2255,9 @@ for r in range(1, int(subplotGrid[1]['max']) + 1):
                     subplot['palette_count'] = subplot['traces'] if args.per_trace_colours else subplot['frames'] if args.per_frame_colours else 1
                 else:
                     subplot['palette_count'] = totalTraceCount if args.per_trace_colours else totalFrameCount if args.per_frame_colours else totalInputCount
-                subplot['palette_count'] = max(0, subplot['palette_count'] - len(subplot['colours']))
-            subplot['colours'].extend([f"rgba({int(255*r)}, {int(255*g)}, {int(255*b)}, {subplot['palette_opacity']})" for (r, g, b) in seaborn.color_palette(subplot['palette'], subplot['palette_count'])])
+
+            paletteExtend = max(0, subplot['palette_count'] - len(subplot['colours']))
+            subplot['colours'].extend([f"rgba({int(255*r)}, {int(255*g)}, {int(255*b)}, {subplot['palette_opacity']})" for (r, g, b) in color_palette(subplot['palette'], paletteExtend)])
 
             subplot['cmap'] = None
 
@@ -2173,6 +2272,7 @@ legendEntries = []
 
 plotFd = None
 if (scriptPath is None):
+    import tempfile
     args.script_only = False
     plotFd, plotScriptName = tempfile.mkstemp()
     plotScript = open(plotScriptName, 'w+')
@@ -2253,17 +2353,19 @@ frameIndex = 0
 traceIndex = 0
 inputIndex = 0
 
-for input in data:
-    options = input['options']
-    frames = input['frames']
+for inputData in data:
+    options = inputData['options']
+    frames = inputData['frames']
     subplot = subplotGridDefinition[options.row][options.col]
     plotRange = []
+    multiCategory = False
     inputTraceIndex = 0
     inputFrameIndex = 0
-    multiCategory = False
 
     if options.traceCount == 0:
-      print(f"WARNING: frame {inputFrameIndex} from input files {', '.join(options.filenames)} has no traces")
+      if not args.quiet:
+        print(f"WARNING: input files {', '.join(options.filenames)} did not result in any traces")
+      inputIndex += 1
       continue
 
     if options.plot not in ['violin', 'box'] and options.distribution_mode in ['aggregated', 'raggregated']:
@@ -2460,6 +2562,12 @@ for input in data:
                       dotMean = None if len(data) == 0 else numpy.mean(data)
                       updateRange(plotRange, [xdata, ydata])
 
+                    if options.category != 'none' and _categories is not None:
+                      _categories = _categories[:min(1, len(_categories))]
+                      dotMeanAxis = [_categories, [traceName]]
+                    else:
+                      dotMeanAxis = [traceName]
+
                 if options.offsetgroups == 'auto':
                     offsetgroup = options.subplotTraceIndex + inputFrameIndex + frameTraceIndex + 1 if args.bar_mode == 'group' else None
                 else:
@@ -2480,13 +2588,18 @@ for input in data:
                     legendEntries.append(traceName)
 
                 if options.plot == 'line':
+                    lineMode = options.line_mode
                     lineMarker = options.line_markers[-1] if len(options.line_markers) <= inputTraceIndex else options.line_markers[inputTraceIndex]
+                    if lineMarker == 'none':
+                        lineMarker = 'circle'
+                        lineMode = lineMode.replace('+markers','').replace('markers+','').replace('markers','none')
+
                     plotScript.write(f"""
 fig.add_trace(go.Scatter(
     name='{traceName}',
     legendgroup='{traceName}',
     showlegend={showInLegend},
-    mode='{options.line_mode}',""")
+    mode='{lineMode}',""")
                     if (_colours is not None):
                         plotScript.write(f"""
     marker_color={_colours},""")
@@ -2588,7 +2701,7 @@ fig.add_trace(go.Box(
     sd={None if precomputeStd is None else [precomputeStd]},
     upperfence={None if precomputeUF is None else [precomputeUF]},
     lowerfence={None if precomputeLF is None else [precomputeLF]},
-    boxpoints=False,
+    boxpoints={options.box_points},
     boxmean={True if options.box_mean == 'line' else False},
     width={options.box_width},
 {commentColour}    fillcolor='{fillcolour}',
@@ -2605,8 +2718,8 @@ fig.add_trace(go.Scatter(
     name='mean_{traceName}',
     legendgroup='{traceName}',
     showlegend=False,
-    y={[traceName] if not options.vertical else [precomputeMean] if precomputeMean is not None else [dotMean]},
-    x={[traceName] if options.vertical else [precomputeMean] if precomputeMean is not None else [dotMean]},
+    y={dotMeanAxis if not options.vertical else [precomputeMean] if precomputeMean is not None else [dotMean]},
+    x={dotMeanAxis if options.vertical else [precomputeMean] if precomputeMean is not None else [dotMean]},
 {commentColour}    fillcolor='{fillcolour}',
 {commentColour}    line_color='{markercolour}',
     line_width={options.line_width},
@@ -2664,7 +2777,7 @@ fig.add_trace(go.Violin(
             if options.plot == 'heatmap':
               if subplot['cmap'] is None:
                 try:
-                    seaborn_cmap = seaborn.color_palette(subplot['palette'], as_cmap=True)
+                    seaborn_cmap = color_palette(subplot['palette'], as_cmap=True)
                     if subplot['palette_cmap'] in ['log', 'rlog']:
                         cmap_range = numpy.logspace(numpy.log10(0.1), numpy.log10(1.1), 255) - 0.1
                         if subplot['palette_cmap'] == 'rlog':
@@ -2697,6 +2810,10 @@ fig.add_trace(go.Heatmap(
 ), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
               """)
             elif options.plot == 'dendrogram':
+              import plotly.figure_factory
+              import scipy.cluster.hierarchy
+              import scipy.spatial.distance
+
               data = frame.values.tolist()
               labels = list(frame.index)
 
@@ -2749,8 +2866,6 @@ fig.add_trace({sDendrogramTrace}, col={options.col}, row={options.row}, secondar
             else:
               raise f'ERROR: unknown plot type {options.plot}'
 
-
-
         inputIndex += 1
         if subplot['palette_local']:
             subplot['palette_index'] += 1 if args.per_input_colours else 0
@@ -2789,7 +2904,7 @@ fig.add_trace({sDendrogramTrace}, col={options.col}, row={options.row}, secondar
     automargin={True if options.y_title_standoff is None else False},
     {'# ' if options.y_title is None else ''}title_text='{options.y_title}',
     title_standoff={options.y_title_standoff},
-    tickcolor={options.y_colour},
+    tickcolor={options.y_tick_colour},
     tickformat='{options.y_tick_format}',
     ticksuffix='{options.y_tick_suffix}',
     tickprefix='{options.y_tick_prefix}',
@@ -2822,7 +2937,7 @@ fig.add_trace({sDendrogramTrace}, col={options.col}, row={options.row}, secondar
     automargin={True if options.x_title_standoff is None else False},
     {'# ' if options.x_title is None else ''}title_text='{options.x_title}',
     title_standoff={options.x_title_standoff},
-    tickcolor={options.x_colour},
+    tickcolor={options.x_tick_colour},
     tickformat='{options.x_tick_format}',
     ticksuffix='{options.x_tick_suffix}',
     tickprefix='{options.x_tick_prefix}',
@@ -2942,6 +3057,7 @@ plotScript.write("""
 
 plotScript.close()
 if args.browser or len(args.output) > 0:
+    import subprocess
     cmdLine = ['python3', plotScriptName]
     if args.browser:
         cmdLine.append('--browser')
@@ -2953,6 +3069,7 @@ if scriptPath is None:
     os.close(plotFd)
     os.remove(plotScriptName)
 else:
+    import shutil
     for s in secondaryScriptPaths:
         shutil.copy(scriptPath, s)
     if not args.quiet:
