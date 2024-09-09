@@ -1683,9 +1683,9 @@ for inputArgs in args.input:
 
     focusedFrames = list(range(len(inputFrames)))
 
-    optionConsumed = [False for _ in range(len(input['args'].ordered_args))]
+    optionConsumed = [False for _ in range(len(inputArgs['args'].ordered_args))]
 
-    for optionIdx, (optionName, optionValue) in enumerate(input['args'].ordered_args):
+    for optionIdx, (optionName, optionValue) in enumerate(inputArgs['args'].ordered_args):
         if optionConsumed[optionIdx]:
             print(f"DEBUG: {optionName} already consumed", file=sys.stderr)
             continue
