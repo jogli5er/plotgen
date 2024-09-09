@@ -1552,7 +1552,6 @@ defaultPadMargin = False
 doneSomething = False
 
 import pandas, numpy, pickle, xopen, os, io, gc, re, copy
-pandas.set_option('future.no_silent_downcasting', True)
 pandas.set_option('copy_on_write', True)
 
 stdinBuf = None
