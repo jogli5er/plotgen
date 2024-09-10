@@ -1666,7 +1666,7 @@ for inputArgs in args.input:
                 frame = DataframeActions.dropRowsByIds(frame, [0])
 
             if args.debug:
-              print("DEBUG: parsing number formats", file=sys.stderr)
+                print("DEBUG: parsing number formats", file=sys.stderr)
             # Relatively slow, though I don't see a way around it
             frame = frame.map(DataframeActions.transformers['float'])
 
