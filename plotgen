@@ -328,7 +328,17 @@ class DataframeActions:
       return str(value).lower() in ['nan', 'none', 'null', 'zero', 'nodata', '<na>']
 
     def __temp_index(x):
+        print(f"__temp_index got {x}")
         value = numpy.nan if DataframeActions.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else str((float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else x)
+        print(f"and returns {value}")
+        return value
+
+    def __temp_mixed(x):
+        if args.debug:
+            print(f"__temp_mixed got {x}")
+        value = numpy.nan if DataframeActions.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else (float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else str(x)
+        if args.debug:
+            print(f"and returns {value}")
         return value
 
     # Before plotting index and columns MUST BE string, for plotting those can be anything
@@ -342,7 +352,7 @@ class DataframeActions:
       'index': __temp_index,  # lambda x: numpy.nan if DataframeActions.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else str((float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else x),
       'forcefloat': lambda x: numpy.nan if not isFloat(x) else float(x),
       'forceint': lambda x: numpy.nan if not isFloat(x) or numpy.isnan(float(x)) else int(float(x)),
-      'mixed': lambda x: numpy.nan if DataframeActions.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else (float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else str(x), # nan if nan, float if float, int if int else str
+      'mixed': __temp_mixed,  # lambda x: numpy.nan if DataframeActions.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else (float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else str(x), # nan if nan, float if float, int if int else str
     }
 
 
