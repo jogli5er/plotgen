@@ -1970,16 +1970,16 @@ for inputArgs in args.input:
                 elif optionName == 'data_scale':
                     frame = DataframeActions.scaleConstant(frame, optionValue)
                 elif optionName == 'column_names':
-                    if input['args'].ordered_args[optionIdx+1][0] == "filename" and input['args'].ordered_args[optionIdx+1][1]:
+                    if inputArgs['args'].ordered_args[optionIdx+1][0] == "filename" and inputArgs['args'].ordered_args[optionIdx+1][1]:
                         frame = DataframeActions.renameColumns(frame, list(range(frame.shape[1])), frameOptions.filenames)
                         optionConsumed[optionIdx+1] = True
-                    elif input['args'].ordered_args[optionIdx+1][0] == "renameregex":
+                    elif inputArgs['args'].ordered_args[optionIdx+1][0] == "renameregex":
                         optionConsumed[optionIdx+1] = True
                         regexnames = []
                         for n in frame.columns:
-                            m = re.match(input['args'].ordered_args[optionIdx+1][1][0].encode('utf-8').decode('unicode_escape'), n)
+                            m = re.match(inputArgs['args'].ordered_args[optionIdx+1][1][0].encode('utf-8').decode('unicode_escape'), n)
                             if not m:
-                                print(f"WARNING: REGEX DID NOT MATCHL: {input['args'].ordered_args[optionIdx+1][1][0].encode('utf-8').decode('unicode_escape')} for string {n}")
+                                print(f"WARNING: REGEX DID NOT MATCHL: {inputArgs['args'].ordered_args[optionIdx+1][1][0].encode('utf-8').decode('unicode_escape')} for string {n}")
                             regexnames.append(' - '.join(list(m.groups())))
                         frame = DataframeActions.renameColumns(frame, list(range(frame.shape[1])), regexnames)
                     else:
@@ -1992,16 +1992,16 @@ for inputArgs in args.input:
                         columnIds = ['index'] if optionValue[0] == 'index' else DataframeActions.sliceToColumnIds(frame, SliceType()(optionValue[0]))
                         frame = DataframeActions.renameColumns(frame, columnIds, optionValue[1:])
                 elif optionName == 'row_names':
-                    if input['args'].ordered_args[optionIdx+1][0] == "filename" and input['args'].ordered_args[optionIdx+1][1]:
+                    if inputArgs['args'].ordered_args[optionIdx+1][0] == "filename" and inputArgs['args'].ordered_args[optionIdx+1][1]:
                         frame = DataframeActions.renameRows(frame, list(range(frame.shape[0])), frameOptions.filenames)
                         optionConsumed[optionIdx+1] = True
-                    elif input['args'].ordered_args[optionIdx+1][0] == "renameregex":
+                    elif inputArgs['args'].ordered_args[optionIdx+1][0] == "renameregex":
                         optionConsumed[optionIdx+1] = True
                         regexnames = []
                         for n in frame.index:
-                            m = re.match(input['args'].ordered_args[optionIdx+1][1][0].encode('utf-8').decode('unicode_escape'), n)
+                            m = re.match(inputArgs['args'].ordered_args[optionIdx+1][1][0].encode('utf-8').decode('unicode_escape'), n)
                             if not m:
-                                print(f"WARNING: REGEX DID NOT MATCHL: {input['args'].ordered_args[optionIdx+1][1][0].encode('utf-8').decode('unicode_escape')} for string {n}")
+                                print(f"WARNING: REGEX DID NOT MATCHL: {inputArgs['args'].ordered_args[optionIdx+1][1][0].encode('utf-8').decode('unicode_escape')} for string {n}")
                                 regexnames.append(n)
                                 continue
                             regexnames.append(' - '.join(list(m.groups())))
@@ -2044,7 +2044,7 @@ for inputArgs in args.input:
                 focusedFrames = list(range(len(inputFrames)))
             elif optionName == 'frame_names':
                 for i, iF in enumerate(focusedFrames):
-                    if input['args'].ordered_args[optionIdx+1][0] == "filename" and input['args'].ordered_args[optionIdx+1][1]:
+                    if inputArgs['args'].ordered_args[optionIdx+1][0] == "filename" and inputArgs['args'].ordered_args[optionIdx+1][1]:
                         optionConsumed[optionIdx+1] = True
                         inputFrames[iF][1].index.name = inputFrames[iF][0].filenames[0]
                     else:
