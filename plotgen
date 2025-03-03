@@ -2197,6 +2197,7 @@ from plotly.subplots import make_subplots
 
 # Disable MathJAX to avoid unnecessary message in pdf output
 pio.kaleido.scope.mathjax = None
+pio.kaleido.scope.chromium_args += ("--single-process",)
 
 filepath = os.path.dirname(__file__)
 filename, fileext = os.path.splitext(os.path.basename(__file__))
