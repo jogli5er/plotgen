@@ -2032,15 +2032,15 @@ for inputArgs in args.input:
                 elif optionName == 'drop_nan':
                     frame = DataframeActions.dropNaN(frame)
                 elif optionName == 'drop_nan_row':
-                    frame = DataframeActions.dropNaNRow(frame)
+                    frame = DataframeActions.dropNaNRows(frame)
                 elif optionName == 'drop_nan_col':
-                    frame = DataframeActions.dropNaNColumn(frame)
+                    frame = DataframeActions.dropNaNColumns(frame)
                 elif optionName == 'drop_any_nan':
                     frame = DataframeActions.dropNaN(frame, True)
                 elif optionName == 'drop_any_nan_row':
-                    frame = DataframeActions.dropNaNRow(frame, True)
+                    frame = DataframeActions.dropNaNRows(frame, True)
                 elif optionName == 'drop_any_nan_col':
-                    frame = DataframeActions.dropNaNColumn(frame, True)
+                    frame = DataframeActions.dropNaNColumns(frame, True)
                 elif optionName == 'print':
                     DataframeActions.printFrames(frameOptions.filenames, frame, _index, len(inputFrames), outputPrecision)
                     doneSomething = True
