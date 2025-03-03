@@ -434,6 +434,12 @@ class DataframeActions:
     def transpose(dataframe):
       _tmp = dataframe.index.name
       return dataframe.transpose()
+    
+    def dropNaNColumns(dataframe, dropAny=False):
+      return dataframe.dropna(how='any' if dropAny else 'all', axis=1)
+
+    def dropNaNRows(dataframe, dropAny=False):
+      return dataframe.dropna(how='any' if dropAny else 'all', axis=0)
 
     def dropNaN(dataframe, dropAny=False):
       return dataframe.dropna(how='any' if dropAny else 'all', axis=0).dropna(how='any' if dropAny else 'all', axis=1)
@@ -1127,6 +1133,10 @@ parserFileOptions.add_argument("--frame-names", help="rename frames, start from 
 parserFileOptions.add_argument("--iframe-names", help="rename specific frames selected by index or slice (--iframe-names -1 last)", type=str, sticky_default=True, default=[], nargs='*', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--drop-nan", help="drop rows/columns that only contain NaN values", sticky_default=True, default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--drop-any-nan", help="drop rows/columns that contain NaN values", sticky_default=True, default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--drop-nan-row", help="drop rows that only contain NaN values", sticky_default=True, default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--drop-any-nan-row", help="drop rows that contain NaN values", sticky_default=True, default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--drop-nan-col", help="drop columns that only contain NaN values", sticky_default=True, default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--drop-any-nan-col", help="drop columns that contain NaN values", sticky_default=True, default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--transpose", help="transpose rows and columns", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--print", help="print out all active frame", default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 
@@ -2021,8 +2031,16 @@ for inputArgs in args.input:
                         frame = DataframeActions.renameRows(frame, rowIds, optionValue[1:])
                 elif optionName == 'drop_nan':
                     frame = DataframeActions.dropNaN(frame)
+                elif optionName == 'drop_nan_row':
+                    frame = DataframeActions.dropNaNRow(frame)
+                elif optionName == 'drop_nan_col':
+                    frame = DataframeActions.dropNaNColumn(frame)
                 elif optionName == 'drop_any_nan':
                     frame = DataframeActions.dropNaN(frame, True)
+                elif optionName == 'drop_any_nan_row':
+                    frame = DataframeActions.dropNaNRow(frame, True)
+                elif optionName == 'drop_any_nan_col':
+                    frame = DataframeActions.dropNaNColumn(frame, True)
                 elif optionName == 'print':
                     DataframeActions.printFrames(frameOptions.filenames, frame, _index, len(inputFrames), outputPrecision)
                     doneSomething = True
