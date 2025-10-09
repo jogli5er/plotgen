@@ -355,7 +355,7 @@ class DataframeActions:
       'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend', 'ljust', 'rjust', 'cjust', 'kmeans', 'sed'],
       'amidComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq', 'min', 'max'],
       'onlyAmidComputeFunctions' : ['concat', 'copy', 'kmeans_labels'],
-      'soloComputeFunctions': ['sum', 'mean', 'median', 'gmean', 'std', 'var', 'count', 'skew', 'mad', 'min', 'max', 'first', 'last'],
+      'soloComputeFunctions': ['sum', 'mean', 'median', 'gmean', 'hmean', 'std', 'var', 'count', 'skew', 'mad', 'min', 'max', 'first', 'last'],
       'specialGroupFunctions' : ['kmeans'],
       'nonComputeFunctions': ['set', 'cset', 'append', 'prepend', 'ljust', 'rjust', 'cjust', 'concat', 'copy', 'sed', 'kmeans_labels'] + list(transformers.keys())
     }
@@ -583,6 +583,9 @@ class DataframeActions:
             sortKey = sortKey.sort_values(by=sortKey.index.tolist(), axis=1, ascending=(order == 'asc'), key=natsort_keygen()).T
         elif functionName == 'name':
             return dataframe.sort_index(axis=1)
+        elif functionName == 'hmean':
+          from scipy.stats import hmean
+          sortKey = dataframe.apply(lambda x: hmean(x.dropna()), axis=0).reset_index(drop=True).sort_values(ascending=(order == 'asc'), key=natsort_keygen())
         elif functionName == 'gmean':
             from scipy.stats import gmean
             sortKey = dataframe.apply(lambda x: gmean(x.dropna()), axis=0).reset_index(drop=True).sort_values(ascending=(order == 'asc'), key=natsort_keygen())
@@ -646,6 +649,9 @@ class DataframeActions:
       if functionName == 'gmean':
         from scipy.stats import gmean
         normSeries = dataframe.iloc[:, colIds].apply(pandas.to_numeric, errors='coerce').apply(lambda x: gmean(x.dropna()), axis=0)
+      elif functionName == 'hmean':
+          from scipy.stats import hmean
+          normSeries = dataframe.iloc[:, colIds].apply(pandas.to_numeric, errors='coerce').apply(lambda x: hmean(x.dropna()), axis=0)
       else:
         normSeries = getattr(dataframe.iloc[:, colIds].apply(pandas.to_numeric, errors='coerce'), functionName)(axis=0)
 
@@ -809,6 +815,10 @@ class DataframeActions:
         from scipy.stats import gmean
         newCol = dataframe.apply(pandas.to_numeric, errors='coerce').apply(lambda x: gmean(x.dropna()), axis=1)
         newCol.name = name
+      elif functionName == 'hmean':
+        from scipy.stats import hmean
+        newCol = dataframe.apply(pandas.to_numeric, errors='coerce').apply(lambda x: hmean(x.dropna()), axis=1)
+        newCol.name = name
       else:
         newCol = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=1)
         newCol.name = name
@@ -876,6 +886,9 @@ class DataframeActions:
           if functionName == 'gmean':
             from scipy.stats import gmean
             dataframe = dataframe.convert_dtypes().groupby(by=columnIds, as_index=False, sort=False, dropna=False).aggregate(lambda x: gmean(x.dropna()))
+          elif functionName == 'hmean':
+            from scipy.stats import hmean
+            dataframe = dataframe.convert_dtypes().groupby(by=columnIds, as_index=False, sort=False, dropna=False).aggregate(lambda x: hmean(x.dropna()))
           else:
             dataframe = getattr(dataframe.convert_dtypes().groupby(by=columnIds, as_index=False, sort=False, dropna=False), functionName)()
           if len(dataframe.columns) != len(newColumnLabels):
